@@ -1,0 +1,333 @@
+---
+title: "koeye-sensor-qc-2023"
+author: "prepared by Emily Haughton"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(warning = FALSE, echo = FALSE)
+# Explanation of code
+## Action required
+
+#Install and/or load packages
+#install.packages('ggplot2')
+#install.packages('plotly')
+#install.packages('tidyverse')
+
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(knitr)
+library(lubridate)
+library(kableExtra)
+
+## Set working directory
+opts_knit$set(root.dir = "~/git-repos/koeye-stream-time-series")
+```
+
+
+
+```{r load, include=FALSE}
+# Load data - read headers
+fileheaders <- read.csv("koeye-jan.csv",
+                        nrows = 1, as.is = TRUE,
+                        header = FALSE)
+# Read in data, drop redundant header rows
+df <- read.csv("koeye-jan.csv",
+                 header = FALSE,
+                skip= 1,
+                 stringsAsFactors = FALSE)
+
+# Add headers to dataframe
+colnames(df) <- fileheaders
+names(df)
+glimpse(df)
+
+
+
+#colnames(df)[2] <- "date"
+df$date<-as.POSIXct(df$date,format="%Y-%m-%d %H:%M")
+
+#check structure
+str(df)
+```
+
+
+
+#### Sensor Metadata
+
+This data set comprises half hourly water level, temperature, and conductivity data aggregated to the 5 min interval from two Onset Hobo U20L-04 pressure transducers (one measuring water pressure and one measuring air pressure) and one Hobo U24-001 Conductivity sensor which also measures temperature. The sensors were installed in 2017 and are typically downloaded twice per year.
+
+This data set contains `r nrow(df)` measurements from 20-10-22 to 2023-10-12 see table 2 for a proportional breakdown of data set quality levels. 
+
+| Date| Comment |
+|:----------|:--------------|
+|2017-05-20| Conductivity (SC) sensor installed |
+|2017-08-31| Water level (PT) installed|
+|2017-12| PT froze and clogged with sediment ~Dec 2017; data compromised intermittently|
+|2018-05| Installation and sensors removed; sensors malfunctioned|
+|2018-07| Sensors re-installed; new PT2 sensor installed for overlap|
+|2018-10| PT uninstalled; PT2 continues to operate |
+|2021-05-11| SC sensor malfunction; removed indefinitely| 
+|2021-10-22 |PT2 download; re-installed upside down  |
+|2021-10-22| 11cm offset added to account for vertical change - average of height diff; sensor length = 15.74cm; sensor position = 15.74 - 1.6 cm;new sensor height = 13.72 cm|
+|2022-03-21| PT2 re-installed in correct position; offset removed|
+|2022-10-18| PT2 downloaded |
+|2023-04-08| PT2 downloaded|
+
+
+## QC methods
+
+The following depicts the typical methodology applied to create the stream stage, and temperature time-series data package which uses 5-minute average measurements that are quality controlled (QC’d), flagged and corrected where needed (Table 1-4) outlined below: 
+
+1.	Download annual data
+2.	Check for outliers
+3.	Check for prevalence of automated flags
+4.	Range -- Confirm data fall within realistic upper and lower bounds (i.e typically no sub-zero temperatures in summer months depending on elevation of site) 
+5.	Persistence -- Is there a repeated value indicative of a sensor malfunction?
+6.	Internal consistency -- Are values realistic for a given time period? (i.e does water temperature fluctuate diurnally?) 
+7.	Spatial consistency -- Are data patterns consistent with what networked sensors in the same area recorded?
+8.	Manual gap-filling -- Use linear regression to establish relationship between two sensors and compute missing values for gap-filling
+9.	 Assign flags to remaining data in accordance with “Hakai Sensor Network Quality Control (QC)” document 
+10.	Re-upload to Sensor Network QC portal
+
+
+```{r qc_table_prep, include = FALSE}
+
+filtered_data <- df %>%
+  filter(sensor %in% c("PT", "PT2", "SC", "tempPT", "tempPT2", "tempSC") & qflag %in% c("SVC", "SVD", "EV", "AV"))
+
+result_table <- filtered_data %>%
+  group_by(sensor, qflag) %>%
+  summarise(count = n())
+
+```
+
+
+```{r qc_table, include = TRUE}
+
+table<-kable(result_table, format = "markdown", caption="Table 1. Quality control flag count summary for the Koeye  River Station.") 
+  
+table
+
+
+```
+
+
+```{r data_wrangling}
+# Convert the Date column to a proper date format
+df$date <- as.POSIXct(df$date, format = "%Y-%m-%d %H:%M:%S")
+
+# Extract the year from the Date column
+df$year <- format(df$date, "%Y")
+
+
+
+#write.csv(df, "koeye-timeseries-2023.csv")
+
+# Initialize empty lists to store the results
+depth_dfs <- list()
+temp_dfs <- list()
+
+# Loop through unique years
+for (year in unique(df$year)) {
+  
+  # Subset the data for the current year
+  year_data <- df[df$year == year, ]
+  
+  # Depth data (assuming sensors are named PT_Avg and PT2_Avg)
+  depth_data <- year_data[year_data$sensor %in% c("PT", "PT2"), ]
+  
+  # Temp data (assuming sensors are named tempPT and tempPT2)
+  temp_data <- year_data[year_data$sensor %in% c("tempPT", "tempPT2"), ]
+  
+  # Check if there is data before aggregating
+  if (nrow(depth_data) > 0) {
+    # Extract only the date part before aggregating
+    depth_data$date <- as.Date(depth_data$date)
+    
+    # Aggregate depth data to daily timestep
+    daily_avg_depth <- aggregate(value ~ date, data = depth_data, FUN = mean)
+    
+    # Store the result in the list
+    depth_dfs[[year]] <- daily_avg_depth
+  }
+  
+  # Check if there is data before aggregating
+  if (nrow(temp_data) > 0) {
+    # Extract only the date part before aggregating
+    temp_data$date <- as.Date(temp_data$date)
+    
+    # Aggregate temp data to daily timestep
+    daily_avg_temp <- aggregate(value ~ date, data = temp_data, FUN = mean)
+    
+    # Store the result in the list
+    temp_dfs[[year]] <- daily_avg_temp
+  }
+}
+
+
+# Replace 2017 with the desired year
+
+depth_2017 <- depth_dfs[["2017"]]
+temp_2017 <- temp_dfs[["2017"]]
+depth_2018 <- depth_dfs[["2018"]]
+temp_2018 <- temp_dfs[["2018"]]
+depth_2019 <- depth_dfs[["2019"]]
+temp_2019 <- temp_dfs[["2019"]]
+depth_2020 <- depth_dfs[["2020"]]
+temp_2020 <- temp_dfs[["2020"]]
+depth_2021 <- depth_dfs[["2021"]]
+temp_2021 <- temp_dfs[["2021"]]
+depth_2022 <- depth_dfs[["2022"]]
+temp_2022 <- temp_dfs[["2022"]]
+depth_2023 <- depth_dfs[["2023"]]
+temp_2023 <- temp_dfs[["2023"]]
+
+```
+
+####  Annual Data {.tabset}
+
+##### 2017
+```{r 2017_plot, include = TRUE, results='asis'}
+
+t <- ggplotly(ggplot() +
+  geom_line(data = temp_2017, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Temperature [°C]"))
+t
+
+d<- ggplotly(ggplot() +
+  geom_line(data = depth_2017, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Depth [m]"))
+d  
+
+```
+
+
+
+##### 2018
+```{r 2018_plot, include = TRUE, results='asis'}
+
+ t <- ggplotly(ggplot() +
+  geom_line(data = temp_2018, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Temperature [°C]"))
+t
+
+d<- ggplotly(ggplot() +
+  geom_line(data = depth_2018, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Depth [m]"))
+d
+
+```
+
+##### 2019
+```{r 2019_plot, include = TRUE, results='asis'}
+
+t <- ggplotly(ggplot() +
+  geom_line(data = temp_2019, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Temperature [°C]"))
+t
+
+d<- ggplotly(ggplot() +
+  geom_line(data = depth_2019, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Depth [m]"))
+  
+d
+
+```
+
+
+##### 2020
+```{r 2020_plot, include = TRUE, results='asis'}
+
+t <- ggplotly(ggplot() +
+  geom_line(data = temp_2020, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Temperature [°C]"))
+t
+
+d<- ggplotly(ggplot() +
+  geom_line(data = depth_2020, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Depth [m]"))
+  
+d
+
+```
+
+##### 2021
+```{r 2021_plot, include = TRUE, results='asis'}
+t <- ggplotly(ggplot() +
+  geom_line(data = temp_2021, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Temperature [°C]"))
+t
+
+d<- ggplotly(ggplot() +
+  geom_line(data = depth_2021, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Depth [m]"))
+  
+d
+```
+
+
+##### 2022 
+```{r 2022_plot, include = TRUE, results='asis'}
+
+t <- ggplotly(ggplot() +
+  geom_line(data = temp_2022, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Temperature [°C]"))
+t
+
+d<- ggplotly(ggplot() +
+  geom_line(data = depth_2022, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Depth [m]"))
+  
+d
+
+```
+
+##### 2023
+```{r 2023_plot, include = TRUE, results='asis'}
+
+ t <- ggplotly(ggplot() +
+  geom_line(data = temp_2023, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Temperature [°C]"))
+t
+
+d<- ggplotly(ggplot() +
+  geom_line(data = depth_2023, aes(x = date, y = value)) +
+  theme_bw() +
+  scale_x_date(date_labels = "%b-%d", date_breaks = "2 month") +
+  labs(title = " ", x = "date", y = "Water Depth [m]"))
+  
+d
+
+```
+
+
+

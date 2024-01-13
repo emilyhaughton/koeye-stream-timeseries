@@ -1,0 +1,17 @@
+# Changelog Koeye River dataset - Kwakshua Watersheds Program, Hakai Institute
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+
+## [v1.0.0] - 2020-03
+First version of Koeye River time-series. Date range 2017-05-20 to 2020-03-06. Data sheets are provided for full time series and per water year.
+
+## [v1.2.0] - 2022-01
+Second version of Koeye River time-series. Date range 2017-05-20 to 2021-10-22. Data sheets are provided for full time series and per water year. Conductivity data not included in this version due to failed download. 
+
+##[v1.3.0]
+Added 2021-10-22 to 2023-10-12 time-series data,wrangling code, and qc summary document to repository. 
+
+Changed
+
+Combined the previous koeye (time-series) data into this repository and deprecated KR01-time-series-v2_2017-2021 and KR01-time-series-v1_2017-2020 repositories. 
