@@ -15,7 +15,7 @@ Data dictionary
 In the data dictionary we aim to provide definitions of all the core tables. Definitions of variables in sample result data may have there own separate data dictionary or readme file in the raw_data folder and sub folders.
 License
 
-This repository is public and so the data and code are licensed under the Creative Commons By Attribution 4.0 (CC BY4) license. Download the data files you'd like or clone this Git repository and copy the data to your computer but you must attribute the work to the authors. To cite this work please see http://dx.doi.org/10.21966/1.566666 Please collaborate with the authors of this dataset if you plan to analyze it. They represent a significant public resource, and time investment.
+This repository is public and so the data and code are licensed under the Creative Commons By Attribution 4.0 (CC BY4) license. Download the data files you'd like or clone this Git repository and copy the data to your computer but you must attribute the work to the authors. To cite this work please see [DOI here] Please collaborate with the authors of this dataset if you plan to analyze it. They represent a significant public resource, and time investment.
 
 What's in the supplemental material?
 Data folders
